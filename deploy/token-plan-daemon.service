@@ -1,0 +1,16 @@
+[Unit]
+Description=Token Plan fetcher daemon (MiniMax)
+After=postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=simple
+ExecStart=%h/venvs/minimax-token-plan/bin/python %h/bin/fetch_token_plan_daemon.py
+Restart=always
+RestartSec=10
+WorkingDirectory=%h
+StandardOutput=append:%h/Documents/MiniMax/token-plan/daemon.out.log
+StandardError=append:%h/Documents/MiniMax/token-plan/daemon.err.log
+
+[Install]
+WantedBy=multi-user.target

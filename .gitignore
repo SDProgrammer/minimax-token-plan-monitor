@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+
+# Virtualenv
+venv/
+.venv/
+env/
+
+# Logs
+*.log
+*.out.log
+*.err.log
+logs/
+
+# Sensitive - NEVER commit
+*.secret
+secret
+secrets/
+config/
+.config/
+
+# Local config / DB dumps
+*.db
+*.sqlite
+*.dump
+
+# 编辑器 / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# 测试 / 临时
+tmp/
+.cache/
+.pytest_cache/
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Desktop.ini
+
+# SSH keys (本地开发机)
+id_ed25519
+id_rsa
+*.pem
