@@ -1,6 +1,6 @@
 # minimax-token-plan-monitor
 
-监控 [MiniMax Token Plan](https://platform.minimax.cn/token-plan) 配额用量,定期快照入库,每周自动出一份"5h 窗口用满率"周报。
+监控 [MiniMax Token Plan](https://platform.minimax.cn/token-plan) 配额用量,定期快照入库,每周自动出一份"5h 窗口使用率"周报(用满率 + 使用率分布)。
 
 > 本项目为社区第三方工具,**不隶属 MiniMax 官方**。依赖的是控制台内部接口,非官方公开 API,可能随 MiniMax 调整而变动(见[已知限制](#已知限制))。
 
@@ -68,7 +68,7 @@ python report_token_plan.py --stdout-only
 │    → curl MiniMax API → PG     │
 │  cron(周一 10:00):            │
 │    token-plan-weekly.sh       │
-│    → fetch + report           │
+│    → fetch + report + push    │
 │  PostgreSQL:                  │
 │    db minimax_token_plan      │
 │    snapshots / model_usage    │
@@ -87,8 +87,9 @@ python report_token_plan.py --stdout-only
 ├── schema.sql                 # PostgreSQL DDL
 ├── fetch_token_plan.py        # 一次性拉取(cron/手动用)
 ├── fetch_token_plan_daemon.py # 长跑 daemon(systemd 用)
-├── report_token_plan.py       # 周报生成
-├── token-plan-weekly.sh       # 每周 wrapper(fetch + report)
+├── report_token_plan.py       # 周报生成(5h 窗口使用率统计)
+├── push_token_plan_to_feishu.py # 周报摘要推送飞书 webhook(重试3次)
+├── token-plan-weekly.sh       # 每周 wrapper(fetch + report + push)
 ├── examples/
 │   └── report_sample.md       # 报告样例(脱敏)
 └── deploy/
@@ -144,7 +145,7 @@ git clone <your-repo> /opt/minimax-token-plan-monitor
 bash /opt/minimax-token-plan-monitor/deploy/aliyun_setup.sh   # 需 root
 ```
 
-脚本会:装 PG + Python3.11 → 建库建表 → 建 venv → 拷脚本到 `~/bin/` → 提示输入 Key → 注册 systemd + 每周一 10:00 cron → 跑一次验证。
+脚本会:装 PG + Python3.11 → 建库建表 → 建 venv → 拷脚本到 `/root/bin/` → 提示输入 Key → 注册 systemd + 每周一 10:00 cron → 跑一次验证。
 
 ## 验证
 
@@ -165,9 +166,10 @@ bash /opt/minimax-token-plan-monitor/deploy/aliyun_setup.sh   # 需 root
 
 ## 报告怎么读
 
-- **判定**:每个 5h 窗口内 `current_interval_remaining_percent` 的最小值 ≤ 5% → 记一次"用满"。
-- **目标**:用满率 ≥ 80% = 配额刚好够;< 50% = 大量浪费,可降档。
-- 报告按天拆分"用满窗口 / 总窗口 / 用满率"。
+- **使用率口径**:每个 5h 窗口取 `current_interval_remaining_percent` 最小值 → 使用率 = 100% - 剩余%。
+- **分档**:≥95% 用满 · 80-95% 高效 · 50-80% 中等 · 20-50% 偏低 · <20% 浪费。
+- **用满率**(剩余 ≤5% 才算用满)只是"用满"这一档的特例,报告同时给出平均使用率与分布,避免"没用满但用了一定量"被误判为浪费。
+- 报告按天拆分"窗口数 / 平均使用率 / 最低使用率 / 用满数",并附分模型窗口明细。
 
 ## 关键设计决策
 
@@ -181,12 +183,14 @@ bash /opt/minimax-token-plan-monitor/deploy/aliyun_setup.sh   # 需 root
 
 ### 为什么不内置推送(飞书/邮件/webhook)
 
-监控是监控,推送是你的个人集成。保持本仓库单一职责,需要推送自行在 `token-plan-weekly.sh` 末尾加几行(见下)。
+监控是监控,推送是你的个人集成。仓库提供了一个可选的飞书 webhook 推送脚本 `push_token_plan_to_feishu.py`(纯 urllib,无额外依赖,失败自动重试 3 次),webhook 从 `~/.config/minimax/feishu_webhook` 或环境变量 `FEISHU_WEBHOOK` 读取,脚本不含任何密钥。
 
 ```bash
+# 飞书自定义机器人(webhook 存 ~/.config/minimax/feishu_webhook,chmod 600)
+.venv/bin/python push_token_plan_to_feishu.py --file "$LATEST"
 # 邮件
 mail -s "Token Plan 周报 $(date +%Y-W%V)" you@example.com < "$LATEST"
-# webhook
+# 其他 webhook
 curl -X POST https://hooks.example.com/notify -H 'Content-Type: text/markdown' --data-binary "@$LATEST"
 ```
 
